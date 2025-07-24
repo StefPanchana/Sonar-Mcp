@@ -1,0 +1,13 @@
+{
+  "sonarqube": {
+    "baseUrl": "http://localhost:9000",
+    "token": "your-sonar-token-here"
+  },
+  "mcp": {
+    "server": {
+      "name": "sonarqube",
+      "command": "node",
+      "args": ["./dist/index.js"]
+    }
+  }
+}
