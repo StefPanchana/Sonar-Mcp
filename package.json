@@ -2,7 +2,7 @@
   "name": "sonarqube-mcp-server",
   "version": "1.0.0",
   "description": "MCP Server for SonarQube 10.6+ integration",
-  "main": "dist/index.js",
+  "main": "dist/index-multiclient.js",
   "type": "module",
   "scripts": {
     "build": "tsc",

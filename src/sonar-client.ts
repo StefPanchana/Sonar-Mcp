@@ -30,6 +30,13 @@ export interface Issue {
   type: string;
 }
 
+export interface UserSession {
+  userId: string;
+  token: string;
+  baseUrl: string;
+  lastActivity: Date;
+}
+
 export class SonarClient {
   private client: AxiosInstance;
 
@@ -40,6 +47,13 @@ export class SonarClient {
         'Authorization': `Bearer ${config.token}`,
         'Content-Type': 'application/json'
       }
+    });
+  }
+
+  static createFromSession(session: UserSession): SonarClient {
+    return new SonarClient({
+      baseUrl: session.baseUrl,
+      token: session.token
     });
   }
 
@@ -124,5 +138,70 @@ export class SonarClient {
   async getSystemStatus(): Promise<any> {
     const response = await this.client.get('/api/system/status');
     return response.data;
+  }
+}
+
+export class MultiClientSonarManager {
+  private sessions: Map<string, UserSession> = new Map();
+  private clients: Map<string, SonarClient> = new Map();
+  private readonly SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+  authenticateUser(userId: string, token: string, baseUrl: string): boolean {
+    try {
+      const session: UserSession = {
+        userId,
+        token,
+        baseUrl,
+        lastActivity: new Date()
+      };
+      
+      const client = SonarClient.createFromSession(session);
+      
+      this.sessions.set(userId, session);
+      this.clients.set(userId, client);
+      
+      console.error(`User ${userId} authenticated successfully`);
+      return true;
+    } catch (error) {
+      console.error(`Authentication failed for user ${userId}:`, error);
+      return false;
+    }
+  }
+
+  getClientForUser(userId: string): SonarClient | null {
+    const session = this.sessions.get(userId);
+    if (!session) {
+      return null;
+    }
+
+    // Check session timeout
+    const now = new Date();
+    if (now.getTime() - session.lastActivity.getTime() > this.SESSION_TIMEOUT) {
+      this.removeUser(userId);
+      return null;
+    }
+
+    // Update last activity
+    session.lastActivity = now;
+    return this.clients.get(userId) || null;
+  }
+
+  removeUser(userId: string): void {
+    this.sessions.delete(userId);
+    this.clients.delete(userId);
+    console.error(`User ${userId} session removed`);
+  }
+
+  getActiveUsers(): string[] {
+    return Array.from(this.sessions.keys());
+  }
+
+  cleanupExpiredSessions(): void {
+    const now = new Date();
+    for (const [userId, session] of this.sessions.entries()) {
+      if (now.getTime() - session.lastActivity.getTime() > this.SESSION_TIMEOUT) {
+        this.removeUser(userId);
+      }
+    }
   }
 }

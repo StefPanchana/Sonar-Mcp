@@ -7,10 +7,11 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { SonarClient, SonarConfig } from './sonar-client.js';
+import { UserSessionManager } from './user-session-manager.js';
 
 class SonarMCPServer {
   private server: Server;
-  private sonarClient: SonarClient | null = null;
+  private sessionManager: UserSessionManager;
 
   constructor() {
     this.server = new Server(
@@ -25,18 +26,15 @@ class SonarMCPServer {
       }
     );
 
-    this.initializeSonarClient();
+    this.sessionManager = new UserSessionManager();
     this.setupToolHandlers();
+    this.startSessionCleanup();
   }
 
-  private initializeSonarClient() {
-    const token = process.env.SONARQUBE_TOKEN;
-    const url = process.env.SONARQUBE_URL;
-    
-    if (token && url) {
-      this.sonarClient = new SonarClient({ baseUrl: url, token });
-      console.error(`SonarQube configured: ${url}`);
-    }
+  private startSessionCleanup() {
+    setInterval(() => {
+      this.sessionManager.cleanupExpiredSessions();
+    }, 5 * 60 * 1000); // Cleanup every 5 minutes
   }
 
   private setupToolHandlers() {
@@ -44,9 +42,28 @@ class SonarMCPServer {
       tools: [
 
         {
+          name: 'authenticate_user',
+          description: 'Authenticate user with SonarQube credentials',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              userId: { type: 'string', description: 'Unique user identifier' },
+              token: { type: 'string', description: 'SonarQube token (optional if using default)' },
+              baseUrl: { type: 'string', description: 'SonarQube URL (optional if using default)' }
+            },
+            required: ['userId']
+          }
+        },
+        {
           name: 'get_projects',
           description: 'Get all projects from SonarQube',
-          inputSchema: { type: 'object', properties: {} }
+          inputSchema: {
+            type: 'object',
+            properties: {
+              userId: { type: 'string', description: 'User identifier' }
+            },
+            required: ['userId']
+          }
         },
         {
           name: 'get_project_metrics',
@@ -54,11 +71,12 @@ class SonarMCPServer {
           inputSchema: {
             type: 'object',
             properties: {
+              userId: { type: 'string', description: 'User identifier' },
               projectKey: { type: 'string', description: 'Project key' },
               metrics: { type: 'array', items: { type: 'string' }, description: 'Metrics to retrieve' },
               branch: { type: 'string', description: 'Branch name (optional)' }
             },
-            required: ['projectKey']
+            required: ['userId', 'projectKey']
           }
         },
         {
@@ -162,11 +180,14 @@ class SonarMCPServer {
 
       try {
         switch (name) {
+          case 'authenticate_user':
+            return this.authenticateUser(args as { userId: string; token?: string; baseUrl?: string });
+          
           case 'get_projects':
-            return this.getProjects();
+            return this.getProjects(args as { userId: string });
           
           case 'get_project_metrics':
-            return this.getProjectMetrics(args as { projectKey: string; metrics?: string[]; branch?: string });
+            return this.getProjectMetrics(args as { userId: string; projectKey: string; metrics?: string[]; branch?: string });
           
           case 'get_issues':
             return this.getIssues(args as { projectKey: string; severity?: string; type?: string; branch?: string });
@@ -211,12 +232,26 @@ class SonarMCPServer {
     });
   }
 
-  private async getProjects() {
-    if (!this.sonarClient) {
-      throw new Error('SonarQube not configured. Check environment variables.');
+  private async authenticateUser(args: { userId: string; token?: string; baseUrl?: string }) {
+    const success = this.sessionManager.authenticateUser(args.userId, args.token, args.baseUrl);
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: success ? `User ${args.userId} authenticated successfully` : `Authentication failed for user ${args.userId}`
+        }
+      ]
+    };
+  }
+
+  private async getProjects(args: { userId: string }) {
+    const client = this.sessionManager.getClientForUser(args.userId);
+    if (!client) {
+      throw new Error(`User ${args.userId} not authenticated or session expired.`);
     }
 
-    const projects = await this.sonarClient.getProjects();
+    const projects = await client.getProjects();
     
     return {
       content: [
@@ -228,12 +263,13 @@ class SonarMCPServer {
     };
   }
 
-  private async getProjectMetrics(args: { projectKey: string; metrics?: string[]; branch?: string }) {
-    if (!this.sonarClient) {
-      throw new Error('SonarQube not configured. Check environment variables.');
+  private async getProjectMetrics(args: { userId: string; projectKey: string; metrics?: string[]; branch?: string }) {
+    const client = this.sessionManager.getClientForUser(args.userId);
+    if (!client) {
+      throw new Error(`User ${args.userId} not authenticated or session expired.`);
     }
 
-    const metrics = await this.sonarClient.getProjectMetrics(args.projectKey, args.metrics, args.branch);
+    const metrics = await client.getProjectMetrics(args.projectKey, args.metrics, args.branch);
     const branchInfo = args.branch ? ` (${args.branch})` : '';
     
     return {

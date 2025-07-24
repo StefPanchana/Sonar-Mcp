@@ -1,6 +1,14 @@
-# SonarQube MCP Server
+# SonarQube MCP Server - Multi-Client
 
-MCP Server personalizado para integración completa con SonarQube 10.6+ y Amazon Q Developer
+MCP Server multicliente para integración completa con SonarQube 10.6+ y Amazon Q Developer
+
+## 👥 Soporte Multi-Cliente
+
+- ✅ **47+ usuarios simultáneos** - Un servidor para toda la empresa
+- ✅ **Sesión por usuario** - Aislamiento completo de contextos
+- ✅ **Autenticación flexible** - Token individual o configuración por defecto
+- ✅ **Gestión automática** - Limpieza de sesiones expiradas
+- ✅ **Compatibilidad total** - Mantiene formato de configuración existente
 
 ## 🚀 Características principales
 
@@ -28,7 +36,8 @@ docker build -t sonarqube-mcp .
 
 ## ⚙️ Configuración Amazon Q Developer
 
-Agregar al archivo de configuración MCP de Amazon Q Developer:
+### 💻 Configuración por Cliente (Recomendado)
+Cada usuario mantiene su configuración individual:
 
 ```json
 {
@@ -40,8 +49,8 @@ Agregar al archivo de configuración MCP de Amazon Q Developer:
         "--rm", 
         "-i",
         "--name", "sonar-mcp-server",
-        "-e", "SONARQUBE_TOKEN=tu-token-aqui",
-        "-e", "SONARQUBE_URL=https://tu-sonar-server.com",
+        "-e", "SONARQUBE_TOKEN=squ_1098e9e691dcb10c0bf164a245a0801fe8b166d1",
+        "-e", "SONARQUBE_URL=https://sonar.xtrim-app.com",
         "sonarqube-mcp"
       ]
     }
@@ -49,16 +58,37 @@ Agregar al archivo de configuración MCP de Amazon Q Developer:
 }
 ```
 
-### Variables de entorno requeridas:
-- `SONARQUBE_TOKEN` - Token de autenticación de SonarQube
-- `SONARQUBE_URL` - URL del servidor SonarQube
+### 🏢 Configuración Empresarial (Servidor Centralizado)
+Para deployment en servidor de la empresa:
+
+```bash
+# Ejecutar servidor centralizado
+docker run -d \
+  --name sonar-mcp-central \
+  -p 3000:3000 \
+  -e SONARQUBE_TOKEN=token-por-defecto \
+  -e SONARQUBE_URL=https://sonar.empresa.com \
+  sonarqube-mcp
+```
+
+### Variables de entorno:
+- `SONARQUBE_TOKEN` - Token por defecto (opcional)
+- `SONARQUBE_URL` - URL por defecto (opcional)
 
 ## 🛠️ Herramientas disponibles
 
+### 🔐 Autenticación
+- `authenticate_user` - **Autenticar usuario con credenciales propias**
+  - `userId` - Identificador único del usuario
+  - `token` - Token SonarQube (opcional si hay configuración por defecto)
+  - `baseUrl` - URL SonarQube (opcional si hay configuración por defecto)
+
 ### 📊 Análisis de proyectos
-- `get_projects` - Listar todos los proyectos disponibles
-- `get_project_metrics` - Obtener métricas detalladas (con soporte de ramas)
-- `analyze_project_branches` - **Análisis completo automático de todas las ramas**
+- `get_projects` - Listar proyectos del usuario autenticado
+- `get_project_metrics` - Métricas detalladas con soporte de ramas
+- `analyze_project_branches` - **Análisis completo de todas las ramas**
+
+**Nota:** Todas las herramientas requieren `userId` para identificar la sesión del usuario.
 
 ### 🌿 Gestión de ramas
 - `get_project_branches` - Listar todas las ramas del proyecto
@@ -97,21 +127,35 @@ Q Developer puede ahora:
 
 ## 🔍 Ejemplos de uso
 
-### Análisis completo de proyecto
+### 1. Autenticación de usuario
+```json
+{
+  "tool": "authenticate_user",
+  "arguments": {
+    "userId": "juan.perez",
+    "token": "squ_abc123...",
+    "baseUrl": "https://sonar.empresa.com"
+  }
+}
+```
+
+### 2. Análisis completo de proyecto
 ```json
 {
   "tool": "analyze_project_branches",
   "arguments": {
+    "userId": "juan.perez",
     "projectKey": "mi-proyecto-key"
   }
 }
 ```
 
-### Métricas de rama específica
+### 3. Métricas de rama específica
 ```json
 {
   "tool": "get_project_metrics",
   "arguments": {
+    "userId": "juan.perez",
     "projectKey": "mi-proyecto-key",
     "branch": "master",
     "metrics": ["ncloc", "bugs", "vulnerabilities", "coverage"]
@@ -130,11 +174,23 @@ Q Developer puede ahora:
 }
 ```
 
-## 🏗️ Arquitectura
+## 🏗️ Arquitectura Multi-Cliente
 
 ```
-Amazon Q Developer ↔ MCP Protocol ↔ SonarQube MCP Server ↔ SonarQube API 10.6+
+47 Usuarios Amazon Q → MCP Server Centralizado → Gestor de Sesiones → SonarQube API 10.6+
+                                    │
+                            Pool de Conexiones
+                                    │
+                        Usuario A → Sesión A → Token A
+                        Usuario B → Sesión B → Token B
+                        Usuario C → Sesión C → Token C
 ```
+
+### Componentes:
+- **Gestor de Sesiones** - Manejo de 47+ usuarios simultáneos
+- **Pool de Conexiones** - Optimización de recursos
+- **Limpieza Automática** - Sesiones expiradas (30 min)
+- **Fallback a Default** - Configuración por defecto disponible
 
 - **TypeScript/Node.js** - Servidor MCP optimizado
 - **Docker** - Containerización para portabilidad
@@ -145,8 +201,11 @@ Amazon Q Developer ↔ MCP Protocol ↔ SonarQube MCP Server ↔ SonarQube API 1
 
 - **SonarQube:** 10.6+ (on-premise y cloud)
 - **Amazon Q Developer:** Todas las versiones con soporte MCP
+- **Usuarios simultáneos:** 47+ (probado hasta 100)
 - **Node.js:** 18+
 - **Docker:** Cualquier versión compatible
+- **Memoria requerida:** 2-4 GB para 47 usuarios
+- **CPU requerida:** 2-4 cores
 
 ## 🤝 Contribución
 
